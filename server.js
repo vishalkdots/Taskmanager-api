@@ -39,7 +39,7 @@ app.use('/api/', apiLimiter)
 app.use(cors({
   origin: [
     'http://localhost:5173',
-    'https://taskmanager-kappa-self.vercel.app/'
+    'https://taskmanager-kappa-self.vercel.app'
   ],
   credentials: true
 }))
@@ -78,7 +78,7 @@ const io = new Server(httpServer, {
   cors: {
     origin: [
     'http://localhost:5173',
-    'https://taskmanager-kappa-self.vercel.app/'
+    'https://taskmanager-kappa-self.vercel.app'
   ],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true
