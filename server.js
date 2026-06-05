@@ -37,10 +37,7 @@ app.use('/api/', apiLimiter)
 
 // CORS setup
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://taskmanager-kappa-self.vercel.app'
-  ],
+  origin: 'http://localhost:5173',
   credentials: true
 }))
 
@@ -76,10 +73,7 @@ app.use(errorHandler)
 // Socket.IO setup
 const io = new Server(httpServer, {
   cors: {
-    origin: [
-    'http://localhost:5173',
-    'https://taskmanager-kappa-self.vercel.app'
-  ],
+    origin: 'http://localhost:5173',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true
   }
@@ -281,6 +275,75 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('Team chat error:', err)
     }
+  })
+
+  // Video Meeting Rooms - WebRTC signaling
+  const videoRooms = new Map()
+
+  socket.on('video:join-room', ({ roomId }) => {
+    const user = activeUsers.get(socket.id)
+    if (!user) return
+    socket.join(`video:${roomId}`)
+
+    if (!videoRooms.has(roomId)) {
+      videoRooms.set(roomId, new Map())
+    }
+    const room = videoRooms.get(roomId)
+    room.set(socket.id, { socketId: socket.id, name: user.name, email: user.email })
+
+    // Tell the new user about existing peers
+    const existingPeers = Array.from(room.entries())
+      .filter(([id]) => id !== socket.id)
+      .map(([, u]) => u)
+    socket.emit('video:existing-peers', existingPeers)
+
+    // Tell everyone else a new user joined
+    socket.to(`video:${roomId}`).emit('video:user-joined', {
+      socketId: socket.id,
+      name: user.name,
+      email: user.email
+    })
+
+    console.log(`[Video] ${user.name} joined room ${roomId}`)
+  })
+
+  socket.on('video:offer', ({ to, offer }) => {
+    io.to(to).emit('video:offer', { from: socket.id, offer })
+  })
+
+  socket.on('video:answer', ({ to, answer }) => {
+    io.to(to).emit('video:answer', { from: socket.id, answer })
+  })
+
+  socket.on('video:ice-candidate', ({ to, candidate }) => {
+    io.to(to).emit('video:ice-candidate', { from: socket.id, candidate })
+  })
+
+  socket.on('video:chat-message', ({ roomId, text }) => {
+    const user = activeUsers.get(socket.id)
+    if (!user || !text || !roomId) return
+    io.to(`video:${roomId}`).emit('video:chat-message', {
+      socketId: socket.id,
+      name: user.name,
+      text,
+      timestamp: new Date().toLocaleTimeString()
+    })
+  })
+
+  socket.on('video:leave-room', ({ roomId }) => {
+    const user = activeUsers.get(socket.id)
+    socket.leave(`video:${roomId}`)
+    if (videoRooms.has(roomId)) {
+      videoRooms.get(roomId).delete(socket.id)
+      if (videoRooms.get(roomId).size === 0) {
+        videoRooms.delete(roomId)
+      }
+    }
+    socket.to(`video:${roomId}`).emit('video:user-left', {
+      socketId: socket.id,
+      name: user ? user.name : 'Unknown'
+    })
+    console.log(`[Video] ${user ? user.name : 'Unknown'} left room ${roomId}`)
   })
 
   socket.on('disconnect', () => {
