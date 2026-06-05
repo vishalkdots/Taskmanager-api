@@ -37,7 +37,7 @@ app.use('/api/', apiLimiter)
 
 // CORS setup
 app.use(cors({
-  origin: ['http://localhost:5173','https://taskmanager-kappa-self.vercel.app'],
+  origin: ['http://localhost:5173', 'https://taskmanager-kappa-self.vercel.app'],
   credentials: true
 }))
 
@@ -73,7 +73,7 @@ app.use(errorHandler)
 // Socket.IO setup
 const io = new Server(httpServer, {
   cors: {
-   origin: ['http://localhost:5173','https://taskmanager-kappa-self.vercel.app'],
+     origin: ['http://localhost:5173', 'https://taskmanager-kappa-self.vercel.app'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true
   }
@@ -344,6 +344,52 @@ io.on('connection', (socket) => {
       name: user ? user.name : 'Unknown'
     })
     console.log(`[Video] ${user ? user.name : 'Unknown'} left room ${roomId}`)
+  })
+
+  // Remote Desktop Access
+  socket.on('remote:request-access', ({ toUserId }) => {
+    const requester = activeUsers.get(socket.id)
+    if (!requester || !toUserId) return
+
+    // Find the target user's socket
+    for (const [sid, u] of activeUsers.entries()) {
+      if (u._id && u._id.toString() === toUserId.toString()) {
+        io.to(sid).emit('remote:access-request', {
+          fromSocketId: socket.id,
+          fromUserId: requester._id,
+          fromName: requester.name
+        })
+        break
+      }
+    }
+  })
+
+  socket.on('remote:respond-access', ({ toSocketId, accepted }) => {
+    const responder = activeUsers.get(socket.id)
+    if (!responder) return
+
+    io.to(toSocketId).emit('remote:access-response', {
+      fromSocketId: socket.id,
+      fromName: responder.name,
+      accepted
+    })
+  })
+
+  socket.on('remote:control-event', ({ toSocketId, type, data }) => {
+    io.to(toSocketId).emit('remote:control-event', { type, data })
+  })
+
+  // Remote screen share WebRTC signaling
+  socket.on('remote:offer', ({ to, offer }) => {
+    io.to(to).emit('remote:offer', { from: socket.id, offer })
+  })
+
+  socket.on('remote:answer', ({ to, answer }) => {
+    io.to(to).emit('remote:answer', { from: socket.id, answer })
+  })
+
+  socket.on('remote:ice-candidate', ({ to, candidate }) => {
+    io.to(to).emit('remote:ice-candidate', { from: socket.id, candidate })
   })
 
   socket.on('disconnect', () => {
